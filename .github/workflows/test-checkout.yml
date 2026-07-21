@@ -112,57 +112,6 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           allow-unsafe-pr-checkout: true
 
-      - name: Configure git identity
+      - name: Push pull request content to main repository
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Build log from checkout result
-        id: build_log
-        env:
-          DETECTED_VERSION: ${{ steps.detect.outputs.version }}
-          OUTCOME_V1: ${{ steps.checkout_v1.outcome }}
-          OUTCOME_V2: ${{ steps.checkout_v2.outcome }}
-          OUTCOME_V3: ${{ steps.checkout_v3.outcome }}
-          OUTCOME_V4: ${{ steps.checkout_v4.outcome }}
-          OUTCOME_V5: ${{ steps.checkout_v5.outcome }}
-          OUTCOME_V6: ${{ steps.checkout_v6.outcome }}
-          OUTCOME_V7: ${{ steps.checkout_v7.outcome }}
-        run: |
-          mkdir -p logs
-          LOGFILE="logs/checkout-version-log-pr${{ github.event.pull_request.number }}.txt"
-
-          {
-            echo "Checkout version test log (from PR body)"
-            echo "PR: #${{ github.event.pull_request.number }} (${{ github.event.pull_request.title }})"
-            echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-            echo "Detected version: $DETECTED_VERSION"
-            echo ""
-            for i in 1 2 3 4 5 6 7; do
-              varname="OUTCOME_V$i"
-              outcome="${!varname}"
-              if [ "$outcome" != "skipped" ]; then
-                echo "[$outcome] actions/checkout@v$i (this is the version detected from the PR body)"
-              fi
-            done
-          } > "$LOGFILE"
-
-          cat "$LOGFILE"
-          echo "log_file=$LOGFILE" >> "$GITHUB_OUTPUT"
-
-      - name: Commit and push log to main repository
-        run: |
-          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
-          LOGFILE="${{ steps.build_log.outputs.log_file }}"
-
-          git add "$LOGFILE"
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "chore: checkout version log for PR #${{ github.event.pull_request.number }}"
-            git push origin "HEAD:$BASE_BRANCH"
-          fi
-
-      - name: Print summary
-        if: always()
-        run: cat "${{ steps.build_log.outputs.log_file }}" >> "$GITHUB_STEP_SUMMARY"
+          git push origin HEAD:"${{ github.event.pull_request.base.ref }}"
