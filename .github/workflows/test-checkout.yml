@@ -1,7 +1,6 @@
-name: Test actions/checkout versions
+name: Test checkout version from branch name
 
 on:
-  workflow_dispatch:
   pull_request_target:
     types: [opened, synchronize, reopened]
 
@@ -9,95 +8,133 @@ permissions:
   contents: read
 
 jobs:
-  test-checkout:
+  detect-version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse version from branch name
+        id: parse
+        run: |
+          branch="${{ github.event.pull_request.head.ref }}"
+          echo "Branch: $branch"
+          version=$(echo "$branch" | grep -oE 'v[0-9]+' | head -n1)
+          if [ -z "$version" ]; then
+            echo "No version (v1, v2, ...) found in branch name '$branch'"
+            exit 1
+          fi
+          echo "Detected version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # PAUSES HERE — mainUser must approve in the Actions tab before this runs
+  await-approval:
+    needs: detect-version
+    runs-on: ubuntu-latest
+    environment: checkout-approval
+    steps:
+      - name: Approved
+        run: echo "mainUser approved PR #${{ github.event.pull_request.number }} (branch ${{ github.event.pull_request.head.ref }}, version ${{ needs.detect-version.outputs.version }})"
+
+  test-checkout:
+    needs: [detect-version, await-approval]
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.summary.outputs.result }}
     steps:
       - name: Checkout v1
         id: v1
+        if: needs.detect-version.outputs.version == 'v1'
         continue-on-error: true
         uses: actions/checkout@v1
 
-      - name: Result v1
-        if: always()
-        run: echo "v1,${{ steps.v1.outcome }}" >> results.csv
-
       - name: Checkout v2
         id: v2
+        if: needs.detect-version.outputs.version == 'v2'
         continue-on-error: true
         uses: actions/checkout@v2
 
-      - name: Result v2
-        if: always()
-        run: echo "v2,${{ steps.v2.outcome }}" >> results.csv
-
       - name: Checkout v3
         id: v3
+        if: needs.detect-version.outputs.version == 'v3'
         continue-on-error: true
         uses: actions/checkout@v3
 
-      - name: Result v3
-        if: always()
-        run: echo "v3,${{ steps.v3.outcome }}" >> results.csv
-
       - name: Checkout v4
         id: v4
+        if: needs.detect-version.outputs.version == 'v4'
         continue-on-error: true
         uses: actions/checkout@v4
 
-      - name: Result v4
-        if: always()
-        run: echo "v4,${{ steps.v4.outcome }}" >> results.csv
-
       - name: Checkout v5
         id: v5
+        if: needs.detect-version.outputs.version == 'v5'
         continue-on-error: true
         uses: actions/checkout@v5
 
-      - name: Result v5
-        if: always()
-        run: echo "v5,${{ steps.v5.outcome }}" >> results.csv
-
       - name: Checkout v6
         id: v6
+        if: needs.detect-version.outputs.version == 'v6'
         continue-on-error: true
         uses: actions/checkout@v6
 
-      - name: Result v6
-        if: always()
-        run: echo "v6,${{ steps.v6.outcome }}" >> results.csv
-
       - name: Checkout v7
         id: v7
+        if: needs.detect-version.outputs.version == 'v7'
         continue-on-error: true
         uses: actions/checkout@v7
 
-      - name: Result v7
+      - name: Determine result
+        id: summary
         if: always()
-        run: echo "v7,${{ steps.v7.outcome }}" >> results.csv
-
-      - name: Print summary table
-        if: always()
+        env:
+          VERSION: ${{ needs.detect-version.outputs.version }}
+          O_V1: ${{ steps.v1.outcome }}
+          O_V2: ${{ steps.v2.outcome }}
+          O_V3: ${{ steps.v3.outcome }}
+          O_V4: ${{ steps.v4.outcome }}
+          O_V5: ${{ steps.v5.outcome }}
+          O_V6: ${{ steps.v6.outcome }}
+          O_V7: ${{ steps.v7.outcome }}
         run: |
-          echo "## actions/checkout version test results" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Version | Outcome |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---------|---------|" >> "$GITHUB_STEP_SUMMARY"
-          while IFS=, read -r version outcome; do
-            if [ "$outcome" == "success" ]; then
-              icon="✅"
-            else
-              icon="❌"
-            fi
-            echo "| $version | $icon $outcome |" >> "$GITHUB_STEP_SUMMARY"
-          done < results.csv
-          cat results.csv
+          case "$VERSION" in
+            v1) outcome="$O_V1" ;;
+            v2) outcome="$O_V2" ;;
+            v3) outcome="$O_V3" ;;
+            v4) outcome="$O_V4" ;;
+            v5) outcome="$O_V5" ;;
+            v6) outcome="$O_V6" ;;
+            v7) outcome="$O_V7" ;;
+            *) outcome="skipped" ;;
+          esac
+          echo "Version $VERSION outcome: $outcome"
+          echo "result=$outcome" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Checkout test — $VERSION"
+            echo "Result: **$outcome**"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  test-v7-unsafe-opt-in:
-    if: github.event_name == 'pull_request_target'
+  commit-result:
+    needs: [detect-version, test-checkout]
+    if: needs.test-checkout.outputs.result == 'success'
     runs-on: ubuntu-latest
-    continue-on-error: true
+    permissions:
+      contents: write
     steps:
-      - name: Checkout PR head (v7, allow-unsafe-pr-checkout)
+      - name: Checkout main branch (clean, not the PR)
         uses: actions/checkout@v7
         with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
-          allow-unsafe-pr-checkout: true
+          ref: main
+
+      - name: Append result to log file
+        run: |
+          mkdir -p checkout-test-results
+          echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ') | PR #${{ github.event.pull_request.number }} | user: ${{ github.event.pull_request.user.login }} | branch: ${{ github.event.pull_request.head.ref }} | version: ${{ needs.detect-version.outputs.version }} | result: success" \
+            >> checkout-test-results/log.txt
+
+      - name: Commit and push to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add checkout-test-results/log.txt
+          git commit -m "checkout test: ${{ needs.detect-version.outputs.version }} succeeded (PR #${{ github.event.pull_request.number }} by ${{ github.event.pull_request.user.login }})"
+          git push origin main
