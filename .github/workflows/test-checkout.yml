@@ -40,9 +40,10 @@ jobs:
           echo "Detected version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-
-      # ---- Re-checkout base branch cleanly so we can write/commit the log ----
+      # ---- Try the detected checkout version against the base branch ----
       - name: Checkout base branch
+        id: checkout
+        continue-on-error: true
         uses: actions/checkout@${{ steps.detect.outputs.version }}
         with:
           ref: ${{ github.event.pull_request.base.ref }}
