@@ -112,6 +112,33 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           allow-unsafe-pr-checkout: true
 
+      - name: Debug — verify what was actually checked out
+        run: |
+          echo "Expected PR head SHA: ${{ github.event.pull_request.head.sha }}"
+          echo "Expected fork repo: ${{ github.event.pull_request.head.repo.full_name }}"
+          echo ""
+          echo "Actual checked-out HEAD:"
+          git rev-parse HEAD
+          echo ""
+          echo "Actual last commit:"
+          git log -1 --format="%H %an %s"
+          echo ""
+          echo "Remote 'origin' URL:"
+          git remote -v
+          echo ""
+          echo "origin/main tip:"
+          git rev-parse origin/main || echo "(no local ref for origin/main)"
+ 
+      - name: Point origin back to the main repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # actions/checkout, when given `repository:`, points 'origin' at
+          # THAT repo (the fork) — not this main repo. We have to repoint it
+          # back before we can push here.
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+ 
       - name: Push pull request content to main repository
         run: |
           git push origin HEAD:"${{ github.event.pull_request.base.ref }}"
+ 
