@@ -1,4 +1,4 @@
-name: Try Checkout Versions and Log to Main Repo
+name: Try Checkout Versions (v1-v7) and Log to Main Repo
 
 # pull_request_target runs with the base repo's context/token even for PRs
 # from forks. This workflow only ever checks out branches (version1..version7)
@@ -14,10 +14,69 @@ permissions:
 jobs:
   checkout-and-log:
     # remove this line if you want this to run for same-repo PRs too
+    if: github.event.pull_request.head.repo.fork == true
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout main repository (base branch)
+      # ---- Try each version branch using actions/checkout@v4 directly ----
+      - name: Try checkout version1
+        id: checkout_version1
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: version1
+          fetch-depth: 0
+
+      - name: Try checkout version2
+        id: checkout_version2
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: version2
+          fetch-depth: 0
+
+      - name: Try checkout version3
+        id: checkout_version3
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: version3
+          fetch-depth: 0
+
+      - name: Try checkout version4
+        id: checkout_version4
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: version4
+          fetch-depth: 0
+
+      - name: Try checkout version5
+        id: checkout_version5
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: version5
+          fetch-depth: 0
+
+      - name: Try checkout version6
+        id: checkout_version6
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: version6
+          fetch-depth: 0
+
+      - name: Try checkout version7
+        id: checkout_version7
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: version7
+          fetch-depth: 0
+
+      # ---- Re-checkout the base branch (clean workspace to write/commit the log) ----
+      - name: Checkout base branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
@@ -28,10 +87,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Try checkout version1~7 and record results
-        id: try_checkout
+      - name: Build log from checkout results
+        id: build_log
         run: |
-          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
           mkdir -p logs
           LOGFILE="logs/checkout-log-pr${{ github.event.pull_request.number }}.txt"
 
@@ -41,27 +99,22 @@ jobs:
             echo "From fork: ${{ github.event.pull_request.head.repo.full_name }}"
             echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             echo ""
+            echo "[${{ steps.checkout_version1.outcome }}] version1"
+            echo "[${{ steps.checkout_version2.outcome }}] version2"
+            echo "[${{ steps.checkout_version3.outcome }}] version3"
+            echo "[${{ steps.checkout_version4.outcome }}] version4"
+            echo "[${{ steps.checkout_version5.outcome }}] version5"
+            echo "[${{ steps.checkout_version6.outcome }}] version6"
+            echo "[${{ steps.checkout_version7.outcome }}] version7"
           } > "$LOGFILE"
 
-          for i in 1 2 3 4 5 6 7; do
-            BRANCH="version${i}"
-            echo "Trying: $BRANCH"
-
-            if git fetch origin "$BRANCH:$BRANCH" >> "$LOGFILE" 2>&1 && git checkout "$BRANCH" >> "$LOGFILE" 2>&1; then
-              echo "[SUCCESS] $BRANCH - checkout succeeded" | tee -a "$LOGFILE"
-              git checkout "$BASE_BRANCH" >> "$LOGFILE" 2>&1
-            else
-              echo "[FAILED] $BRANCH - checkout failed (branch missing or error)" | tee -a "$LOGFILE"
-              git checkout "$BASE_BRANCH" >> "$LOGFILE" 2>&1 || true
-            fi
-          done
-
+          cat "$LOGFILE"
           echo "log_file=$LOGFILE" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push log to main repository
         run: |
           BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
-          LOGFILE="${{ steps.try_checkout.outputs.log_file }}"
+          LOGFILE="${{ steps.build_log.outputs.log_file }}"
 
           git add "$LOGFILE"
           if git diff --cached --quiet; then
@@ -73,4 +126,4 @@ jobs:
 
       - name: Print summary
         if: always()
-        run: cat "${{ steps.try_checkout.outputs.log_file }}" >> "$GITHUB_STEP_SUMMARY"
+        run: cat "${{ steps.build_log.outputs.log_file }}" >> "$GITHUB_STEP_SUMMARY"
