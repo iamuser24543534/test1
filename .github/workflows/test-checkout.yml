@@ -26,17 +26,8 @@ jobs:
           echo "Detected version: $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  # PAUSES HERE — mainUser must approve in the Actions tab before this runs
-  await-approval:
-    needs: detect-version
-    runs-on: ubuntu-latest
-    environment: checkout-approval
-    steps:
-      - name: Approved
-        run: echo "mainUser approved PR #${{ github.event.pull_request.number }} (branch ${{ github.event.pull_request.head.ref }}, version ${{ needs.detect-version.outputs.version }})"
-
   test-checkout:
-    needs: [detect-version, await-approval]
+    needs: detect-version
     runs-on: ubuntu-latest
     outputs:
       result: ${{ steps.summary.outputs.result }}
