@@ -1,131 +1,77 @@
-name: Test checkout version from branch name
+name: Try Checkout Versions and Log to Main Repo
 
+# pull_request_target runs with the base repo's context/token even for PRs
+# from forks. This workflow only ever checks out branches (version1..version7)
+# that live in the MAIN repo, and only writes a log file back to the main
+# repo's base branch — it never touches or executes the fork's own code.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, reopened, synchronize]
 
 permissions:
-  contents: read
+  contents: write   # needed to commit/push the log file back to the repo
 
 jobs:
-  detect-version:
+  checkout-and-log:
+    # remove this line if you want this to run for same-repo PRs too
+    if: github.event.pull_request.head.repo.fork == true
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.parse.outputs.version }}
+
     steps:
-      - name: Parse version from branch name
-        id: parse
-        run: |
-          branch="${{ github.event.pull_request.head.ref }}"
-          echo "Branch: $branch"
-          version=$(echo "$branch" | grep -oE 'v[0-9]+' | head -n1)
-          if [ -z "$version" ]; then
-            echo "No version (v1, v2, ...) found in branch name '$branch'"
-            exit 1
-          fi
-          echo "Detected version: $version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-  test-checkout:
-    needs: detect-version
-    runs-on: ubuntu-latest
-    outputs:
-      result: ${{ steps.summary.outputs.result }}
-    steps:
-      - name: Checkout v1
-        id: v1
-        if: needs.detect-version.outputs.version == 'v1'
-        continue-on-error: true
-        uses: actions/checkout@v1
-
-      - name: Checkout v2
-        id: v2
-        if: needs.detect-version.outputs.version == 'v2'
-        continue-on-error: true
-        uses: actions/checkout@v2
-
-      - name: Checkout v3
-        id: v3
-        if: needs.detect-version.outputs.version == 'v3'
-        continue-on-error: true
-        uses: actions/checkout@v3
-
-      - name: Checkout v4
-        id: v4
-        if: needs.detect-version.outputs.version == 'v4'
-        continue-on-error: true
+      - name: Checkout main repository (base branch)
         uses: actions/checkout@v4
-
-      - name: Checkout v5
-        id: v5
-        if: needs.detect-version.outputs.version == 'v5'
-        continue-on-error: true
-        uses: actions/checkout@v5
-
-      - name: Checkout v6
-        id: v6
-        if: needs.detect-version.outputs.version == 'v6'
-        continue-on-error: true
-        uses: actions/checkout@v6
-
-      - name: Checkout v7
-        id: v7
-        if: needs.detect-version.outputs.version == 'v7'
-        continue-on-error: true
-        uses: actions/checkout@v7
-
-      - name: Determine result
-        id: summary
-        if: always()
-        env:
-          VERSION: ${{ needs.detect-version.outputs.version }}
-          O_V1: ${{ steps.v1.outcome }}
-          O_V2: ${{ steps.v2.outcome }}
-          O_V3: ${{ steps.v3.outcome }}
-          O_V4: ${{ steps.v4.outcome }}
-          O_V5: ${{ steps.v5.outcome }}
-          O_V6: ${{ steps.v6.outcome }}
-          O_V7: ${{ steps.v7.outcome }}
-        run: |
-          case "$VERSION" in
-            v1) outcome="$O_V1" ;;
-            v2) outcome="$O_V2" ;;
-            v3) outcome="$O_V3" ;;
-            v4) outcome="$O_V4" ;;
-            v5) outcome="$O_V5" ;;
-            v6) outcome="$O_V6" ;;
-            v7) outcome="$O_V7" ;;
-            *) outcome="skipped" ;;
-          esac
-          echo "Version $VERSION outcome: $outcome"
-          echo "result=$outcome" >> "$GITHUB_OUTPUT"
-          {
-            echo "## Checkout test — $VERSION"
-            echo "Result: **$outcome**"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  commit-result:
-    needs: [detect-version, test-checkout]
-    if: needs.test-checkout.outputs.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout main branch (clean, not the PR)
-        uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
 
-      - name: Append result to log file
-        run: |
-          mkdir -p checkout-test-results
-          echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ') | PR #${{ github.event.pull_request.number }} | user: ${{ github.event.pull_request.user.login }} | branch: ${{ github.event.pull_request.head.ref }} | version: ${{ needs.detect-version.outputs.version }} | result: success" \
-            >> checkout-test-results/log.txt
-
-      - name: Commit and push to main
+      - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add checkout-test-results/log.txt
-          git commit -m "checkout test: ${{ needs.detect-version.outputs.version }} succeeded (PR #${{ github.event.pull_request.number }} by ${{ github.event.pull_request.user.login }})"
-          git push origin main
+
+      - name: Try checkout version1~7 and record results
+        id: try_checkout
+        run: |
+          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          mkdir -p logs
+          LOGFILE="logs/checkout-log-pr${{ github.event.pull_request.number }}.txt"
+
+          {
+            echo "Checkout attempt log"
+            echo "PR: #${{ github.event.pull_request.number }} (${{ github.event.pull_request.title }})"
+            echo "From fork: ${{ github.event.pull_request.head.repo.full_name }}"
+            echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo ""
+          } > "$LOGFILE"
+
+          for i in 1 2 3 4 5 6 7; do
+            BRANCH="version${i}"
+            echo "Trying: $BRANCH"
+
+            if git fetch origin "$BRANCH:$BRANCH" >> "$LOGFILE" 2>&1 && git checkout "$BRANCH" >> "$LOGFILE" 2>&1; then
+              echo "[SUCCESS] $BRANCH - checkout succeeded" | tee -a "$LOGFILE"
+              git checkout "$BASE_BRANCH" >> "$LOGFILE" 2>&1
+            else
+              echo "[FAILED] $BRANCH - checkout failed (branch missing or error)" | tee -a "$LOGFILE"
+              git checkout "$BASE_BRANCH" >> "$LOGFILE" 2>&1 || true
+            fi
+          done
+
+          echo "log_file=$LOGFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push log to main repository
+        run: |
+          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          LOGFILE="${{ steps.try_checkout.outputs.log_file }}"
+
+          git add "$LOGFILE"
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: checkout log for PR #${{ github.event.pull_request.number }}"
+            git push origin "HEAD:$BASE_BRANCH"
+          fi
+
+      - name: Print summary
+        if: always()
+        run: cat "${{ steps.try_checkout.outputs.log_file }}" >> "$GITHUB_STEP_SUMMARY"
