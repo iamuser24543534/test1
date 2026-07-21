@@ -1,4 +1,4 @@
-name: Change PR code
+name: Check PR and update main
 
 on:
   pull_request:
@@ -12,13 +12,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: change-pr-code-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: update-${{ github.event.pull_request.base.ref }}
+  cancel-in-progress: false
 
 jobs:
-  change-code:
-    # Only push to branches belonging to this repository.
-    # Fork pull requests normally have a read-only token.
+  check-and-update:
+    # This workflow needs a write token.
+    # Fork pull requests normally cannot push to the base repository.
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.draft == false
@@ -26,7 +26,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Read checkout version from PR body
+      # ------------------------------------------------------------
+      # 1. Read checkout@v1 through checkout@v7 from the PR body
+      # ------------------------------------------------------------
+
+      - name: Read checkout version
         id: checkout-version
         shell: bash
         env:
@@ -41,89 +45,131 @@ jobs:
           )"
 
           if [[ -z "$match" ]]; then
-            echo "No checkout version found in the PR body."
-            echo "Using checkout@v7 by default."
+            echo "No checkout@vN found."
+            echo "Using checkout@v7 to continue."
             version="v7"
+            explicitly_requested="false"
           else
             version="${match#checkout@}"
+            explicitly_requested="true"
           fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "explicitly_requested=$explicitly_requested" >> "$GITHUB_OUTPUT"
+
           echo "Selected actions/checkout@$version"
 
-      # The action version in `uses` must be written literally,
-      # so each supported version has its own conditional step.
+      # ------------------------------------------------------------
+      # 2. Checkout the exact PR commit
+      #
+      # Only one of these steps runs.
+      # fetch-depth: 0 is required because we later merge into main.
+      # ------------------------------------------------------------
 
-      - name: Checkout using v1
+      - name: Try checkout v1
         if: steps.checkout-version.outputs.version == 'v1'
         uses: actions/checkout@v1
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Checkout using v2
+      - name: Try checkout v2
         if: steps.checkout-version.outputs.version == 'v2'
         uses: actions/checkout@v2
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Checkout using v3
+      - name: Try checkout v3
         if: steps.checkout-version.outputs.version == 'v3'
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Checkout using v4
+      - name: Try checkout v4
         if: steps.checkout-version.outputs.version == 'v4'
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Checkout using v5
+      - name: Try checkout v5
         if: steps.checkout-version.outputs.version == 'v5'
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Checkout using v6
+      - name: Try checkout v6
         if: steps.checkout-version.outputs.version == 'v6'
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Checkout using v7
+      - name: Try checkout v7
         if: steps.checkout-version.outputs.version == 'v7'
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Change code
+      # ------------------------------------------------------------
+      # 3. Confirm which commit was checked out
+      # ------------------------------------------------------------
+
+      - name: Verify checked-out commit
+        shell: bash
         env:
-          CHECKOUT_VERSION: ${{ steps.checkout-version.outputs.version }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          actual_sha="$(git rev-parse HEAD)"
+
+          echo "Expected PR commit: $EXPECTED_SHA"
+          echo "Actual commit:      $actual_sha"
+
+          if [[ "$actual_sha" != "$EXPECTED_SHA" ]]; then
+            echo "Wrong commit was checked out."
+            exit 1
+          fi
+
+      # ------------------------------------------------------------
+      # 4. Run checks against the PR commit
+      # ------------------------------------------------------------
+
+      - name: Check PR code
         shell: bash
         run: |
           set -euo pipefail
 
-          # Replace this with the real code-changing command.
+          echo "Checking PR commit: $(git rev-parse HEAD)"
+
+          # Replace these examples with your real checks.
           #
-          # Examples:
+          # Node.js:
           # npm ci
-          # npm run format
+          # npm test
+          # npm run lint
           #
-          # python scripts/update_code.py
+          # Python:
+          # python -m pip install -r requirements.txt
+          # python -m pytest
+          #
+          # For the initial test, this command is enough:
+          git status --short
 
-          printf 'actions/checkout@%s\n' \
-            "$CHECKOUT_VERSION" > checkout-version.txt
+      # ------------------------------------------------------------
+      # 5. Merge the checked PR commit into the base branch
+      # ------------------------------------------------------------
 
-      - name: Commit and push changes
+      - name: Merge PR commit into base branch
         env:
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           CHECKOUT_VERSION: ${{ steps.checkout-version.outputs.version }}
         shell: bash
         run: |
@@ -133,14 +179,30 @@ jobs:
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add --all
+          echo "Fetching base branch: $BASE_BRANCH"
+          git fetch origin "$BASE_BRANCH"
 
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-            exit 0
-          fi
+          echo "Switching to the latest base branch"
+          git checkout -B "$BASE_BRANCH" "origin/$BASE_BRANCH"
 
-          git commit \
-            -m "chore: update code using checkout@${CHECKOUT_VERSION}"
+          echo "Merging PR commit: $PR_SHA"
+          git merge \
+            --no-ff \
+            "$PR_SHA" \
+            -m "Merge PR #${PR_NUMBER} after checkout@${CHECKOUT_VERSION} check"
 
-          git push origin "HEAD:${PR_BRANCH}"
+      # ------------------------------------------------------------
+      # 6. Push directly to main/base branch
+      #
+      # Authentication intentionally depends on the selected
+      # actions/checkout version.
+      # ------------------------------------------------------------
+
+      - name: Push base branch
+        env:
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git push origin "HEAD:${BASE_BRANCH}"
