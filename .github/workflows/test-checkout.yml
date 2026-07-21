@@ -1,0 +1,22 @@
+name: Test actions/checkout versions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-checkout:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [v1, v2, v3, v4, v5, v6, v7]
+    steps:
+      - name: Checkout ${{ matrix.version }}
+        uses: actions/checkout@${{ matrix.version }}
+
+      - name: Confirm it worked
+        run: |
+          pwd
+          ls -la
+          git log -1 --oneline
