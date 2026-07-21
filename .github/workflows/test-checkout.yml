@@ -50,7 +50,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
+          # allow-unsafe-pr-checkout: true
 
       - name: Checkout with v2
         id: checkout_v2
@@ -60,7 +60,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
+          # allow-unsafe-pr-checkout: true
 
       - name: Checkout with v3
         id: checkout_v3
@@ -70,7 +70,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
+          # allow-unsafe-pr-checkout: true
 
       - name: Checkout with v4
         id: checkout_v4
@@ -80,7 +80,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
+          # allow-unsafe-pr-checkout: true
 
       - name: Checkout with v5
         id: checkout_v5
@@ -90,7 +90,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
+          # allow-unsafe-pr-checkout: true
 
       - name: Checkout with v6
         id: checkout_v6
@@ -100,7 +100,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
+          # allow-unsafe-pr-checkout: true
 
       - name: Checkout with v7
         id: checkout_v7
@@ -110,7 +110,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
+          # allow-unsafe-pr-checkout: true
 
       - name: Debug — verify what was actually checked out
         run: |
