@@ -1,0 +1,6 @@
+Checkout version test log (from PR body)
+PR: #12 (c)
+Timestamp: 2026-07-21T05:05:32Z
+Detected version: v4
+
+[success] actions/checkout@v4 (this is the version detected from the PR body)
